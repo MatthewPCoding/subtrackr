@@ -10,6 +10,7 @@ Phases wired up:
   Phase 3 - AI: chatbot, suggestions, monthly report, deal finder
   Phase 4 - Savings: subscription audit, overlap detection, alternatives
 """
+import os
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -43,9 +44,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Build CORS origin list from env — add production URLs via ALLOWED_ORIGINS
+# e.g. ALLOWED_ORIGINS=https://xyz.cloudfront.net,https://subtrackr.com
+_extra = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+CORS_ORIGINS = [
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+] + _extra
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8081", "http://127.0.0.1:8081"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
