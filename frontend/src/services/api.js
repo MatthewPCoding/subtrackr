@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // ── API base URL ──────────────────────────────────────────────────────────────
 // Development:  http://127.0.0.1:8000
 // Production:   https://your-env.elasticbeanstalk.com  (replace before deploying)
-const BASE_URL = 'https://subtrackr-prod.us-east-1.elasticbeanstalk.com';
+const BASE_URL = 'subtrackr-prod.eba-ks46fmtm.us-east-1.elasticbeanstalk.com';
 
 const api = axios.create({ baseURL: BASE_URL });
 
