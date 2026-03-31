@@ -1,5 +1,5 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npx expo export --platform web",
+  "buildCommand": "npx expo export --platform web --no-minify",
   "outputDirectory": "dist"
 }
