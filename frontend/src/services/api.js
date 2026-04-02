@@ -105,6 +105,10 @@ export const getEmailLoginURL = async (provider) => {
 // to whichever screen needs to display them (onboarding or EmailScanScreen).
 export const PENDING_EMAIL_RESULTS_KEY = '@subtrackr/pending_email_results';
 
+// Key used to hand off full OAuth data (profile + subs) to RegisterScreen
+// when the OAuth redirect lands on a fresh page load instead of a popup.
+export const PENDING_OAUTH_DATA_KEY = '@subtrackr/pending_oauth_data';
+
 // Public — no auth required. Returns { url } for Google/Microsoft,
 // or { coming_soon: true } for all other providers.
 export const getEmailConnectURL = async (provider) => {

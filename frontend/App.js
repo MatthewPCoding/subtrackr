@@ -8,7 +8,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import SupportChat from './src/components/SupportChat';
 import { colors } from './src/theme';
-import { PENDING_EMAIL_RESULTS_KEY } from './src/services/api';
+import { PENDING_EMAIL_RESULTS_KEY, PENDING_OAUTH_DATA_KEY } from './src/services/api';
 
 function RootNavigator() {
   const { token, loading } = useAuth();
@@ -30,24 +30,38 @@ export default function App() {
     const handleDeepLink = async ({ url }) => {
       if (!url) return;
 
-      // New web-redirect format: https://www.subtrackr.live/?oauth_connect=success&subs=...&profile=...
+      // Web-redirect format: https://www.subtrackr.live/?oauth_connect=success&subs=...&profile=...
       // Legacy native deep-link format: subtrackr://email-success?subs=...
       const isOAuthSuccess =
         url.includes('oauth_connect=success') || url.includes('email-success');
       if (!isOAuthSuccess) return;
 
-      const match = url.match(/[?&]subs=([^&]+)/);
-      if (!match) return;
+      const subsMatch    = url.match(/[?&]subs=([^&]+)/);
+      const profileMatch = url.match(/[?&]profile=([^&]+)/);
+      if (!subsMatch) return;
 
       try {
-        const subs = JSON.parse(decodeURIComponent(match[1]));
+        const subs    = JSON.parse(decodeURIComponent(subsMatch[1]));
+        const profile = profileMatch
+          ? JSON.parse(decodeURIComponent(profileMatch[1]))
+          : {};
 
-        // Always persist — RegisterScreen and EmailScanScreen both check this key
+        // Store full OAuth payload for RegisterScreen (unauthenticated path)
+        await AsyncStorage.setItem(
+          PENDING_OAUTH_DATA_KEY,
+          JSON.stringify({ subs, profile }),
+        );
+        // Store subs separately for EmailScanScreen (authenticated path)
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
 
-        // If the user is already logged in, navigate directly to the scan screen
-        if (navigationRef.current?.isReady()) {
+        if (!navigationRef.current?.isReady()) return;
+
+        try {
+          // Authenticated: jump straight to scan results
           navigationRef.current.navigate('EmailScan', { initialResults: subs });
+        } catch {
+          // Unauthenticated: go to Register — RegisterScreen will pick up the stored data
+          navigationRef.current.navigate('Register');
         }
       } catch {
         // Malformed URL — ignore

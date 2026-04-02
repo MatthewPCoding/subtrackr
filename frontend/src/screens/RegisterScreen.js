@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
   ActivityIndicator, ScrollView
 } from 'react-native';
-import { register, login, importEmailSubscriptions } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { register, login, importEmailSubscriptions, PENDING_OAUTH_DATA_KEY } from '../services/api';
 import { colors, spacing, radius, typography } from '../theme';
 import {
   EmailConnectStep,
@@ -35,6 +36,23 @@ export default function RegisterScreen({ navigation }) {
   const [loading, setLoading]     = useState(false);
   const [formError, setFormError] = useState('');
   const [scanResults, setScanResults] = useState(null);
+
+  // If the app was cold-started by an OAuth redirect (full-page), App.js stores
+  // the data in AsyncStorage and navigates here. Consume it on mount.
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(PENDING_OAUTH_DATA_KEY);
+        if (!raw) return;
+        await AsyncStorage.removeItem(PENDING_OAUTH_DATA_KEY);
+        const { subs, profile } = JSON.parse(raw);
+        setOauthData({ provider: 'google', profile, subs });
+        setStep('username');
+      } catch {
+        // Malformed or missing — stay on email step
+      }
+    })();
+  }, []);
 
   const validateForm = () => {
     if (!username) return 'Username is required';
@@ -125,7 +143,11 @@ export default function RegisterScreen({ navigation }) {
         <ScrollView contentContainerStyle={styles.inner}>
           <View style={styles.logoRow}>
             <Text style={styles.logo}>Sub<Text style={styles.logoAccent}>trackr</Text></Text>
-            <Text style={styles.tagline}>Choose your username</Text>
+            <Text style={styles.tagline}>
+              {oauthData?.profile?.name
+                ? `Hi ${oauthData.profile.name.split(' ')[0]}, choose a username`
+                : 'Choose your username'}
+            </Text>
           </View>
 
           {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
