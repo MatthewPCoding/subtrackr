@@ -6,7 +6,8 @@
       "Bash(python3 -c \"from app.services.email_service import get_google_auth_url; url = get_google_auth_url\\(\\); print\\(''OK''\\); print\\(url[:80], ''...''\\)\")",
       "Bash(pip show:*)",
       "Bash(python3 -c \"import inspect; from google_auth_oauthlib.flow import Flow; print\\(inspect.getsource\\(Flow.__init__\\)\\)\")",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(python3 -m py_compile /Users/mattthewpearcy/subtrackr/backend/app/routes/*.py)"
     ]
   }
 }
