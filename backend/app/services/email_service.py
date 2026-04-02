@@ -19,14 +19,19 @@ Required .env keys:
 import os
 import re
 import json
+import logging
 import urllib.parse
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 GOOGLE_CLIENT_ID      = os.getenv("GOOGLE_CLIENT_ID")
 GOOGLE_CLIENT_SECRET  = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_REDIRECT_URI   = os.getenv("GOOGLE_REDIRECT_URI",   "http://localhost:8000/email/callback/google")
+
+logger.info("email_service loaded — GOOGLE_REDIRECT_URI=%s", GOOGLE_REDIRECT_URI)
 
 MICROSOFT_CLIENT_ID     = os.getenv("MICROSOFT_CLIENT_ID")
 MICROSOFT_CLIENT_SECRET = os.getenv("MICROSOFT_CLIENT_SECRET")
@@ -80,12 +85,14 @@ def _make_google_flow():
 
 
 def get_google_auth_url() -> str:
+    logger.info("Building Google auth URL — redirect_uri=%s", GOOGLE_REDIRECT_URI)
     flow = _make_google_flow()
     url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
         prompt="consent",
     )
+    logger.info("Google auth URL built (first 120 chars): %s", url[:120])
     return url
 
 

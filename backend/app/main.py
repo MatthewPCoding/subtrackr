@@ -11,7 +11,10 @@ Phases wired up:
   Phase 4 - Savings: subscription audit, overlap detection, alternatives
 """
 import os
+import logging
 from fastapi.middleware.cors import CORSMiddleware
+
+logging.basicConfig(level=logging.INFO)
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.database import engine, Base
