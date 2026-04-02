@@ -26,8 +26,7 @@ export default function RegisterScreen({ navigation }) {
   const [oauthData, setOauthData] = useState(null); // { provider, profile, subs }
 
   // Manual form path
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName]   = useState('');
+  const [username, setUsername]   = useState('');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
 
@@ -36,9 +35,8 @@ export default function RegisterScreen({ navigation }) {
   const [scanResults, setScanResults] = useState(null);
 
   const validateForm = () => {
-    if (!firstName) return 'First name is required';
-    if (!lastName)  return 'Last name is required';
-    if (!email)     return 'Email is required';
+    if (!username) return 'Username is required';
+    if (!email)    return 'Email is required';
     if (!email.includes('@')) return 'Enter a valid email';
     if (!password)  return 'Password is required';
     if (password.length < 6) return 'Password must be at least 6 characters';
@@ -82,7 +80,6 @@ export default function RegisterScreen({ navigation }) {
         setStep('scanning');
       } else {
         // ── Manual form path ──
-        const username = `${firstName.toLowerCase()}${lastName.toLowerCase()}`;
         await register(username, email, password);
         await login(username, password);
         navigation.navigate('MainTabs');
@@ -130,28 +127,15 @@ export default function RegisterScreen({ navigation }) {
           {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
           <View style={styles.form}>
-            <View style={styles.nameRow}>
-              <View style={styles.nameField}>
-                <Text style={styles.label}>First name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  placeholder="First"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-              <View style={styles.nameField}>
-                <Text style={styles.label}>Last name</Text>
-                <TextInput
-                  style={styles.input}
-                  value={lastName}
-                  onChangeText={setLastName}
-                  placeholder="Last"
-                  placeholderTextColor={colors.textMuted}
-                />
-              </View>
-            </View>
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.input}
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Choose a username"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+            />
 
             <Text style={styles.label}>Email</Text>
             <TextInput
@@ -224,8 +208,6 @@ const styles = StyleSheet.create({
   tagline: { fontSize: typography.sm, color: colors.textSecondary, marginTop: spacing.sm },
   form: { gap: spacing.md },
   errorText: { fontSize: typography.sm, color: colors.danger, textAlign: 'center', marginBottom: spacing.md, backgroundColor: colors.danger + '11', padding: spacing.md, borderRadius: radius.sm },
-  nameRow: { flexDirection: 'row', gap: spacing.md },
-  nameField: { flex: 1 },
   label: { fontSize: typography.sm, color: colors.textSecondary, marginBottom: 4 },
   input: {
     backgroundColor: colors.surface,
