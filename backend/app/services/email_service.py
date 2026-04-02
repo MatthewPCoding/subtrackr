@@ -25,6 +25,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Google returns equivalent scopes in a different format (e.g. userinfo.email
+# instead of openid email profile). Tell oauthlib to accept them.
+os.environ['OAUTHLIB_RELAX_TOKEN_SCOPE'] = '1'
+
 logger = logging.getLogger(__name__)
 
 GOOGLE_CLIENT_ID      = os.getenv("GOOGLE_CLIENT_ID")
