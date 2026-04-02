@@ -83,8 +83,16 @@ export function EmailConnectStep({ onNext }) {
         return;
       }
 
-      const result = await WebBrowser.openAuthSessionAsync(data.url, 'subtrackr://');
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        'https://www.subtrackr.live',
+      );
       if (result.type !== 'success') return; // cancelled — stay on screen
+
+      if (result.url.includes('oauth_connect=error')) {
+        Alert.alert('Connection failed', 'Could not connect your email. Please try again.');
+        return;
+      }
 
       const subsMatch    = result.url.match(/[?&]subs=([^&]+)/);
       const profileMatch = result.url.match(/[?&]profile=([^&]+)/);

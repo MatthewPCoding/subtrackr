@@ -28,7 +28,13 @@ export default function App() {
 
   useEffect(() => {
     const handleDeepLink = async ({ url }) => {
-      if (!url?.includes('email-success')) return;
+      if (!url) return;
+
+      // New web-redirect format: https://www.subtrackr.live/?oauth_connect=success&subs=...&profile=...
+      // Legacy native deep-link format: subtrackr://email-success?subs=...
+      const isOAuthSuccess =
+        url.includes('oauth_connect=success') || url.includes('email-success');
+      if (!isOAuthSuccess) return;
 
       const match = url.match(/[?&]subs=([^&]+)/);
       if (!match) return;
@@ -47,7 +53,6 @@ export default function App() {
         // Malformed URL — ignore
       }
     };
-
 
     Linking.getInitialURL().then(url => { if (url) handleDeepLink({ url }); });
 

@@ -18,6 +18,8 @@ Auth-required:
   DELETE /email/disconnect         → no-op placeholder
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
@@ -33,11 +35,12 @@ from app.services.email_service import (
     fetch_gmail_subscriptions,
     fetch_outlook_subscriptions,
     build_success_redirect,
+    build_error_redirect,
 )
 
-router = APIRouter(prefix="/email", tags=["Email"])
+logger = logging.getLogger(__name__)
 
-ERROR_REDIRECT = "subtrackr://email-error"
+router = APIRouter(prefix="/email", tags=["Email"])
 
 
 # ── Public: OAuth connect ─────────────────────────────────────────────────────
@@ -65,13 +68,19 @@ async def callback_google(
     code:  str = Query(None),
     error: str = Query(None),
 ):
+    logger.info("Google OAuth callback received — code=%s error=%s", bool(code), error)
     if error or not code:
-        return RedirectResponse(ERROR_REDIRECT)
+        logger.warning("Google OAuth callback missing code or has error: %s", error)
+        return RedirectResponse(build_error_redirect())
     try:
         profile, subs = await fetch_gmail_subscriptions(code)
-        return RedirectResponse(build_success_redirect(profile, subs))
-    except Exception:
-        return RedirectResponse(ERROR_REDIRECT)
+        logger.info("Google OAuth success — email=%s subs_found=%d", profile.get("email"), len(subs))
+        redirect_url = build_success_redirect(profile, subs)
+        logger.info("Redirecting to: %s", redirect_url[:120])
+        return RedirectResponse(redirect_url)
+    except Exception as exc:
+        logger.exception("Google OAuth callback failed: %s", exc)
+        return RedirectResponse(build_error_redirect())
 
 
 @router.get("/callback/microsoft")
@@ -79,13 +88,19 @@ async def callback_microsoft(
     code:  str = Query(None),
     error: str = Query(None),
 ):
+    logger.info("Microsoft OAuth callback received — code=%s error=%s", bool(code), error)
     if error or not code:
-        return RedirectResponse(ERROR_REDIRECT)
+        logger.warning("Microsoft OAuth callback missing code or has error: %s", error)
+        return RedirectResponse(build_error_redirect())
     try:
         profile, subs = await fetch_outlook_subscriptions(code)
-        return RedirectResponse(build_success_redirect(profile, subs))
-    except Exception:
-        return RedirectResponse(ERROR_REDIRECT)
+        logger.info("Microsoft OAuth success — email=%s subs_found=%d", profile.get("email"), len(subs))
+        redirect_url = build_success_redirect(profile, subs)
+        logger.info("Redirecting to: %s", redirect_url[:120])
+        return RedirectResponse(redirect_url)
+    except Exception as exc:
+        logger.exception("Microsoft OAuth callback failed: %s", exc)
+        return RedirectResponse(build_error_redirect())
 
 
 # ── Auth-required ─────────────────────────────────────────────────────────────
