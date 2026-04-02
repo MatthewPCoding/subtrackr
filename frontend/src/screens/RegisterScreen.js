@@ -14,16 +14,18 @@ import {
 
 // Steps:
 // 'email'    → connect Gmail/Outlook (OAuth) or skip
-// 'form'     → manual name/email/password (skip path only)
+// 'username' → choose username (OAuth path only, email pre-filled + locked)
+// 'form'     → manual username/email/password (skip path only)
 // 'terms'    → T&C with checkbox → creates account + auto-login
-// 'scanning' → show pre-loaded subscription results
+// 'scanning' → show pre-loaded subscription results (OAuth path only)
 // done       → navigate to MainTabs
 
 export default function RegisterScreen({ navigation }) {
   const [step, setStep] = useState('email');
 
   // OAuth path — set when user completes OAuth on EmailConnectStep
-  const [oauthData, setOauthData] = useState(null); // { provider, profile, subs }
+  const [oauthData, setOauthData]     = useState(null); // { provider, profile, subs }
+  const [oauthUsername, setOauthUsername] = useState('');
 
   // Manual form path
   const [username, setUsername]   = useState('');
@@ -49,9 +51,15 @@ export default function RegisterScreen({ navigation }) {
       setStep('form');
     } else if (result.type === 'oauth') {
       setOauthData(result);
-      setStep('terms');
+      setStep('username');
     }
     // 'cancel' (browser dismissed) → no-op, stays on email step
+  };
+
+  const handleUsernameNext = () => {
+    if (!oauthUsername.trim()) { setFormError('Username is required'); return; }
+    setFormError('');
+    setStep('terms');
   };
 
   const handleFormNext = () => {
@@ -65,17 +73,13 @@ export default function RegisterScreen({ navigation }) {
     setLoading(true);
     try {
       if (oauthData) {
-        // ── OAuth path: auto-create account from Google profile ──
+        // ── OAuth path: create account with chosen username + Google email ──
         const { profile, subs } = oauthData;
-        const username = profile.email
-          .split('@')[0]
-          .replace(/[^a-z0-9]/gi, '')
-          .toLowerCase();
         // Random password — user never sees it; they log in via OAuth
         const autoPass = Math.random().toString(36).slice(2) +
                          Math.random().toString(36).slice(2);
-        await register(username, profile.email, autoPass);
-        await login(username, autoPass);
+        await register(oauthUsername.trim(), profile.email, autoPass);
+        await login(oauthUsername.trim(), autoPass);
         setScanResults(subs);
         setStep('scanning');
       } else {
@@ -109,6 +113,50 @@ export default function RegisterScreen({ navigation }) {
   // ── Email connect ─────────────────────────────────────────────────────────
   if (step === 'email') {
     return <EmailConnectStep onNext={handleEmailChoice} />;
+  }
+
+  // ── Choose username (OAuth path) ──────────────────────────────────────────
+  if (step === 'username') {
+    return (
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={styles.inner}>
+          <View style={styles.logoRow}>
+            <Text style={styles.logo}>Sub<Text style={styles.logoAccent}>trackr</Text></Text>
+            <Text style={styles.tagline}>Choose your username</Text>
+          </View>
+
+          {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
+
+          <View style={styles.form}>
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={[styles.input, styles.inputLocked]}
+              value={oauthData?.profile?.email ?? ''}
+              editable={false}
+              selectTextOnFocus={false}
+            />
+
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.input}
+              value={oauthUsername}
+              onChangeText={setOauthUsername}
+              placeholder="Choose a username"
+              placeholderTextColor={colors.textMuted}
+              autoCapitalize="none"
+              autoFocus
+            />
+
+            <TouchableOpacity style={styles.btn} onPress={handleUsernameNext}>
+              <Text style={styles.btnText}>Continue →</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
   }
 
   // ── Manual form ───────────────────────────────────────────────────────────
@@ -219,6 +267,7 @@ const styles = StyleSheet.create({
     fontSize: typography.md,
     marginBottom: spacing.md,
   },
+  inputLocked: { color: colors.textSecondary, opacity: 0.6 },
   btn: {
     backgroundColor: colors.accent,
     borderRadius: radius.md,
