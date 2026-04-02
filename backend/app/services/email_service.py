@@ -147,7 +147,7 @@ def get_microsoft_auth_url() -> str:
     )
 
 
-async def fetch_outlook_subscriptions(code: str) -> list[dict]:
+async def fetch_outlook_subscriptions(code: str) -> tuple[dict, list[dict]]:
     import msal
     import httpx
 
@@ -165,6 +165,18 @@ async def fetch_outlook_subscriptions(code: str) -> list[dict]:
         raise Exception(result.get("error_description", "Microsoft auth failed"))
 
     async with httpx.AsyncClient() as client:
+        profile_resp = await client.get(
+            "https://graph.microsoft.com/v1.0/me",
+            headers={"Authorization": f"Bearer {result['access_token']}"},
+            params={"$select": "displayName,mail,userPrincipalName"},
+            timeout=10.0,
+        )
+        profile_data = profile_resp.json()
+        profile = {
+            "email": profile_data.get("mail") or profile_data.get("userPrincipalName", ""),
+            "name":  profile_data.get("displayName", ""),
+        }
+
         resp = await client.get(
             "https://graph.microsoft.com/v1.0/me/messages",
             headers={"Authorization": f"Bearer {result['access_token']}"},
@@ -181,7 +193,7 @@ async def fetch_outlook_subscriptions(code: str) -> list[dict]:
         m for m in messages
         if any(kw in (m.get("subject") or "").lower() for kw in BILLING_KEYWORDS)
     ]
-    return _parse_outlook_messages(billing)
+    return profile, _parse_outlook_messages(billing)
 
 
 def _parse_outlook_messages(messages: list) -> list[dict]:

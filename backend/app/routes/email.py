@@ -82,8 +82,8 @@ async def callback_microsoft(
     if error or not code:
         return RedirectResponse(ERROR_REDIRECT)
     try:
-        subs = await fetch_outlook_subscriptions(code)
-        return RedirectResponse(build_success_redirect(subs))
+        profile, subs = await fetch_outlook_subscriptions(code)
+        return RedirectResponse(build_success_redirect(profile, subs))
     except Exception:
         return RedirectResponse(ERROR_REDIRECT)
 
