@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── API base URL ──────────────────────────────────────────────────────────────
 // Set EXPO_PUBLIC_API_URL in your .env to override (e.g. http://127.0.0.1:8000 for local dev)
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://subtrackr-prod.eba-ks46fmtm.us-east-1.elasticbeanstalk.com';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://subtrackr-z1c7.onrender.com';
 
 const api = axios.create({ baseURL: BASE_URL });
 
