@@ -10,6 +10,32 @@ import SupportChat from './src/components/SupportChat';
 import { colors } from './src/theme';
 import { PENDING_EMAIL_RESULTS_KEY, PENDING_OAUTH_DATA_KEY } from './src/services/api';
 
+// ── OAuth popup relay (web only) ──────────────────────────────────────────────
+// When the backend redirects the OAuth popup back to this URL with
+// ?oauth_connect=success&subs=...&profile=..., this code runs immediately
+// (before React renders), sends the result to the parent window, and closes.
+if (typeof window !== 'undefined' && window.opener) {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const status = params.get('oauth_connect');
+    if (status === 'success') {
+      const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
+      const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
+      window.opener.postMessage(
+        { type: 'oauth_connect', status: 'success', subs, profile },
+        window.location.origin,
+      );
+    } else if (status === 'error') {
+      window.opener.postMessage(
+        { type: 'oauth_connect', status: 'error' },
+        window.location.origin,
+      );
+    }
+    if (status) window.close();
+  } catch {}
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 function RootNavigator() {
   const { token, loading } = useAuth();
   if (loading) return null;
@@ -26,12 +52,41 @@ function RootNavigator() {
 export default function App() {
   const navigationRef = useRef(null);
 
+  // ── postMessage listener: receives OAuth result from the popup (web only) ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'oauth_connect') return;
+
+      if (event.data.status !== 'success') return;
+
+      const { subs, profile } = event.data;
+      try {
+        await AsyncStorage.setItem(
+          PENDING_OAUTH_DATA_KEY,
+          JSON.stringify({ subs, profile }),
+        );
+        await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
+
+        if (navigationRef.current?.isReady()) {
+          navigationRef.current.navigate('Register');
+        }
+      } catch {}
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // ── Deep link handler: native app + full-page redirect fallback ────────────
   useEffect(() => {
     const handleDeepLink = async ({ url }) => {
       if (!url) return;
 
-      // Web-redirect format: https://www.subtrackr.live/?oauth_connect=success&subs=...&profile=...
-      // Legacy native deep-link format: subtrackr://email-success?subs=...
+      // Web full-page redirect: https://www.subtrackr.live/?oauth_connect=success&...
+      // Legacy native deep-link:  subtrackr://email-success?subs=...
       const isOAuthSuccess =
         url.includes('oauth_connect=success') || url.includes('email-success');
       if (!isOAuthSuccess) return;
@@ -46,31 +101,23 @@ export default function App() {
           ? JSON.parse(decodeURIComponent(profileMatch[1]))
           : {};
 
-        // Store full OAuth payload for RegisterScreen (unauthenticated path)
         await AsyncStorage.setItem(
           PENDING_OAUTH_DATA_KEY,
           JSON.stringify({ subs, profile }),
         );
-        // Store subs separately for EmailScanScreen (authenticated path)
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
 
         if (!navigationRef.current?.isReady()) return;
 
         try {
-          // Authenticated: jump straight to scan results
           navigationRef.current.navigate('EmailScan', { initialResults: subs });
         } catch {
-          // Unauthenticated: go to Register — RegisterScreen will pick up the stored data
           navigationRef.current.navigate('Register');
         }
-      } catch {
-        // Malformed URL — ignore
-      }
+      } catch {}
     };
 
     Linking.getInitialURL().then(url => { if (url) handleDeepLink({ url }); });
-
-    // App already running, brought to foreground via deep link
     const sub = Linking.addEventListener('url', handleDeepLink);
     return () => sub.remove();
   }, []);
