@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useCallback } from 'react';
-import { View, StyleSheet, Linking } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import * as Linking from 'expo-linking';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,62 +11,46 @@ import SupportChat from './src/components/SupportChat';
 import { colors } from './src/theme';
 import { PENDING_EMAIL_RESULTS_KEY, PENDING_OAUTH_DATA_KEY } from './src/services/api';
 
-// ── OAuth URL param detection (web only, runs before React renders) ───────────
-//
-// Two cases land here:
-//   1. Popup  — window.opener exists: relay result to parent window and close.
-//   2. Direct — main window redirected here: stash data in _pendingOAuth so the
-//               app can consume it once the NavigationContainer is ready.
-//
-let _pendingOAuth = null; // { subs, profile }
-
-if (typeof window !== 'undefined') {
-  const params      = new URLSearchParams(window.location.search);
-  const oauthStatus = params.get('oauth_connect'); // registration flow
-  const authStatus  = params.get('auth_result');   // login flow
-
+// ── OAuth popup relay (web only, runs before React) ───────────────────────────
+// When the backend redirects the OAuth popup back to this domain, this code
+// runs immediately, posts the result to the parent window, and closes the popup.
+// Uses new URL() rather than URLSearchParams(window.location.search) — more
+// reliable in Expo Web where the router may rewrite location.search.
+if (typeof window !== 'undefined' && window.opener) {
   try {
+    const url         = new URL(window.location.href);
+    const oauthStatus = url.searchParams.get('oauth_connect');
+    const authStatus  = url.searchParams.get('auth_result');
+
     if (oauthStatus) {
-      if (window.opener) {
-        // Registration popup — relay result to parent and close
-        if (oauthStatus === 'success') {
-          const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
-          const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
-          window.opener.postMessage(
-            { type: 'oauth_connect', status: 'success', subs, profile },
-            window.location.origin,
-          );
-        } else {
-          window.opener.postMessage(
-            { type: 'oauth_connect', status: 'error' },
-            window.location.origin,
-          );
-        }
-        window.close();
-      } else if (oauthStatus === 'success') {
-        // Direct landing — stash for handleNavigationReady
-        const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
-        const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
-        _pendingOAuth = { subs, profile };
-        window.history.replaceState({}, '', window.location.pathname);
+      if (oauthStatus === 'success') {
+        const subs    = JSON.parse(decodeURIComponent(url.searchParams.get('subs')    || '[]'));
+        const profile = JSON.parse(decodeURIComponent(url.searchParams.get('profile') || '{}'));
+        window.opener.postMessage(
+          { type: 'oauth_connect', status: 'success', subs, profile },
+          window.location.origin,
+        );
+      } else {
+        window.opener.postMessage(
+          { type: 'oauth_connect', status: 'error' },
+          window.location.origin,
+        );
       }
+      window.close();
     } else if (authStatus) {
-      if (window.opener) {
-        // Login popup — relay result to parent and close
-        if (authStatus === 'success') {
-          const token = decodeURIComponent(params.get('token') || '');
-          window.opener.postMessage(
-            { type: 'auth_result', status: 'success', token },
-            window.location.origin,
-          );
-        } else {
-          window.opener.postMessage(
-            { type: 'auth_result', status: authStatus }, // 'no_account' | 'error'
-            window.location.origin,
-          );
-        }
-        window.close();
+      if (authStatus === 'success') {
+        const token = decodeURIComponent(url.searchParams.get('token') || '');
+        window.opener.postMessage(
+          { type: 'auth_result', status: 'success', token },
+          window.location.origin,
+        );
+      } else {
+        window.opener.postMessage(
+          { type: 'auth_result', status: authStatus },
+          window.location.origin,
+        );
       }
+      window.close();
     }
   } catch {}
 }
@@ -85,23 +70,27 @@ function RootNavigator() {
 }
 
 export default function App() {
-  const navigationRef = useRef(null);
+  const navigationRef   = useRef(null);
+  const pendingNavigate = useRef(null); // queued screen name to navigate when ready
 
-  // Called by NavigationContainer once the navigator is mounted and ready.
-  // Handles the direct-landing OAuth case (_pendingOAuth) with correct timing.
-  const handleNavigationReady = useCallback(async () => {
-    if (!_pendingOAuth) return;
-    const data    = _pendingOAuth;
-    _pendingOAuth = null;
-
-    try {
-      await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,     JSON.stringify(data));
-      await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY,  JSON.stringify(data.subs));
-      navigationRef.current.navigate('Register');
-    } catch {}
+  // Navigate once the NavigationContainer is mounted and ready.
+  const handleNavigationReady = useCallback(() => {
+    if (pendingNavigate.current) {
+      navigationRef.current.navigate(pendingNavigate.current);
+      pendingNavigate.current = null;
+    }
   }, []);
 
-  // ── postMessage listener: popup → parent (web only) ────────────────────────
+  // Helper — navigate now if ready, otherwise queue for onReady.
+  const navigate = useCallback((screen) => {
+    if (navigationRef.current?.isReady()) {
+      navigationRef.current.navigate(screen);
+    } else {
+      pendingNavigate.current = screen;
+    }
+  }, []);
+
+  // ── postMessage listener: popup → parent (registration, web only) ──────────
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -114,51 +103,48 @@ export default function App() {
       try {
         await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,    JSON.stringify({ subs, profile }));
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
-        if (navigationRef.current?.isReady()) {
-          navigationRef.current.navigate('Register');
-        }
+        navigate('Register');
       } catch {}
     };
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, []);
+  }, [navigate]);
 
-  // ── Deep link handler: native + full-page redirect fallback ────────────────
+  // ── Linking: detect OAuth redirect on initial load and URL changes ──────────
+  // Handles the direct-landing case (main window navigated to the redirect URL)
+  // and native deep links. auth_result (login) is handled inside LoginScreen
+  // because it needs access to signIn from AuthContext.
   useEffect(() => {
-    const handleDeepLink = async ({ url }) => {
+    const handleURL = async (url) => {
       if (!url) return;
-
-      const isOAuthSuccess =
-        url.includes('oauth_connect=success') || url.includes('email-success');
-      if (!isOAuthSuccess) return;
-
-      const subsMatch    = url.match(/[?&]subs=([^&]+)/);
-      const profileMatch = url.match(/[?&]profile=([^&]+)/);
-      if (!subsMatch) return;
+      if (!url.includes('oauth_connect=success')) return;
 
       try {
-        const subs    = JSON.parse(decodeURIComponent(subsMatch[1]));
-        const profile = profileMatch
-          ? JSON.parse(decodeURIComponent(profileMatch[1]))
-          : {};
+        const parsed  = Linking.parse(url);
+        const qp      = parsed.queryParams || {};
+        const subs    = JSON.parse(decodeURIComponent(qp.subs    || '[]'));
+        const profile = JSON.parse(decodeURIComponent(qp.profile || '{}'));
 
         await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,    JSON.stringify({ subs, profile }));
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
 
-        if (!navigationRef.current?.isReady()) return;
-        try {
-          navigationRef.current.navigate('EmailScan', { initialResults: subs });
-        } catch {
-          navigationRef.current.navigate('Register');
+        // Clean query params from the address bar (web only)
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', window.location.pathname);
         }
+
+        navigate('Register');
       } catch {}
     };
 
-    Linking.getInitialURL().then(url => { if (url) handleDeepLink({ url }); });
-    const sub = Linking.addEventListener('url', handleDeepLink);
+    // App opened via OAuth redirect (cold start)
+    Linking.getInitialURL().then(url => { if (url) handleURL(url); });
+
+    // URL changed while app was already open (native foreground deep link)
+    const sub = Linking.addEventListener('url', ({ url }) => handleURL(url));
     return () => sub.remove();
-  }, []);
+  }, [navigate]);
 
   return (
     <SafeAreaProvider>

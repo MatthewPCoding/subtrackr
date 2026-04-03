@@ -4,6 +4,7 @@ import {
   StyleSheet, KeyboardAvoidingView, Platform,
   ActivityIndicator, Image, ScrollView, Alert,
 } from 'react-native';
+import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import { login, getEmailLoginURL } from '../services/api';
 import { useAuth } from '../hooks/useAuth';
@@ -103,6 +104,33 @@ export default function LoginScreen({ navigation }) {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState('');
   const { signIn } = useAuth();
+
+  // Handle Google OAuth login result when the backend redirects the main window
+  // directly (direct-landing case, no popup). The popup case is handled by the
+  // postMessage listener in ServiceEmblem.
+  useEffect(() => {
+    const checkAuthResult = async () => {
+      const url = await Linking.getInitialURL();
+      if (!url?.includes('auth_result')) return;
+
+      const parsed = Linking.parse(url);
+      const qp     = parsed.queryParams || {};
+
+      // Clean the URL immediately so a refresh doesn't re-trigger this
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
+      if (qp.auth_result === 'success' && qp.token) {
+        signIn(decodeURIComponent(qp.token));
+      } else if (qp.auth_result === 'no_account') {
+        setError('No account found. Please register first.');
+      } else {
+        setError('Google sign-in failed. Please try again.');
+      }
+    };
+    checkAuthResult();
+  }, [signIn]);
 
   const handleLogin = async () => {
     if (!username || !password) { setError('Please fill in all fields'); return; }
