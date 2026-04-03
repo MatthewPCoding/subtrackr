@@ -11,51 +11,6 @@ import SupportChat from './src/components/SupportChat';
 import { colors } from './src/theme';
 import { PENDING_EMAIL_RESULTS_KEY, PENDING_OAUTH_DATA_KEY } from './src/services/api';
 
-// ── OAuth popup relay (web only, runs before React) ───────────────────────────
-// When the backend redirects the OAuth popup back to this domain, this code
-// runs immediately, posts the result to the parent window, and closes the popup.
-// Uses new URL() rather than URLSearchParams(window.location.search) — more
-// reliable in Expo Web where the router may rewrite location.search.
-if (typeof window !== 'undefined' && window.opener) {
-  try {
-    const url         = new URL(window.location.href);
-    const oauthStatus = url.searchParams.get('oauth_connect');
-    const authStatus  = url.searchParams.get('auth_result');
-
-    if (oauthStatus) {
-      if (oauthStatus === 'success') {
-        const subs    = JSON.parse(decodeURIComponent(url.searchParams.get('subs')    || '[]'));
-        const profile = JSON.parse(decodeURIComponent(url.searchParams.get('profile') || '{}'));
-        window.opener.postMessage(
-          { type: 'oauth_connect', status: 'success', subs, profile },
-          window.location.origin,
-        );
-      } else {
-        window.opener.postMessage(
-          { type: 'oauth_connect', status: 'error' },
-          window.location.origin,
-        );
-      }
-      window.close();
-    } else if (authStatus) {
-      if (authStatus === 'success') {
-        const token = decodeURIComponent(url.searchParams.get('token') || '');
-        window.opener.postMessage(
-          { type: 'auth_result', status: 'success', token },
-          window.location.origin,
-        );
-      } else {
-        window.opener.postMessage(
-          { type: 'auth_result', status: authStatus },
-          window.location.origin,
-        );
-      }
-      window.close();
-    }
-  } catch {}
-}
-// ─────────────────────────────────────────────────────────────────────────────
-
 function RootNavigator() {
   const { token, loading } = useAuth();
   if (loading) return null;
@@ -71,9 +26,9 @@ function RootNavigator() {
 
 export default function App() {
   const navigationRef   = useRef(null);
-  const pendingNavigate = useRef(null); // queued screen name to navigate when ready
+  const pendingNavigate = useRef(null);
 
-  // Navigate once the NavigationContainer is mounted and ready.
+  // Fire any queued navigation once NavigationContainer is ready.
   const handleNavigationReady = useCallback(() => {
     if (pendingNavigate.current) {
       navigationRef.current.navigate(pendingNavigate.current);
@@ -81,7 +36,6 @@ export default function App() {
     }
   }, []);
 
-  // Helper — navigate now if ready, otherwise queue for onReady.
   const navigate = useCallback((screen) => {
     if (navigationRef.current?.isReady()) {
       navigationRef.current.navigate(screen);
@@ -90,17 +44,20 @@ export default function App() {
     }
   }, []);
 
-  // ── postMessage listener: popup → parent (registration, web only) ──────────
+  // ── postMessage from oauth-callback.html (registration, web only) ───────────
+  // oauth-callback.html sends: { oauth_connect, subs, profile, ... }
+  // subs and profile arrive as encoded strings and are parsed here.
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'oauth_connect')     return;
-      if (event.data.status !== 'success')          return;
+      if (event.origin !== 'https://www.subtrackr.live') return;
+      if (event.data?.oauth_connect !== 'success') return;
 
-      const { subs, profile } = event.data;
       try {
+        const subs    = JSON.parse(decodeURIComponent(event.data.subs    || '[]'));
+        const profile = JSON.parse(decodeURIComponent(event.data.profile || '{}'));
+
         await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,    JSON.stringify({ subs, profile }));
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
         navigate('Register');
@@ -111,15 +68,13 @@ export default function App() {
     return () => window.removeEventListener('message', handleMessage);
   }, [navigate]);
 
-  // ── Linking: detect OAuth redirect on initial load and URL changes ──────────
-  // Handles the direct-landing case (main window navigated to the redirect URL)
-  // and native deep links. auth_result (login) is handled inside LoginScreen
-  // because it needs access to signIn from AuthContext.
+  // ── Linking: fallback for when oauth-callback.html redirects the main window ─
+  // If the popup was blocked or window.opener was null, oauth-callback.html
+  // redirects to https://www.subtrackr.live/?oauth_connect=success&...
+  // Linking.getInitialURL picks this up on cold start.
   useEffect(() => {
     const handleURL = async (url) => {
-      if (!url) return;
-      if (!url.includes('oauth_connect=success')) return;
-
+      if (!url?.includes('oauth_connect=success')) return;
       try {
         const parsed  = Linking.parse(url);
         const qp      = parsed.queryParams || {};
@@ -129,19 +84,14 @@ export default function App() {
         await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,    JSON.stringify({ subs, profile }));
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
 
-        // Clean query params from the address bar (web only)
         if (typeof window !== 'undefined') {
           window.history.replaceState({}, '', window.location.pathname);
         }
-
         navigate('Register');
       } catch {}
     };
 
-    // App opened via OAuth redirect (cold start)
     Linking.getInitialURL().then(url => { if (url) handleURL(url); });
-
-    // URL changed while app was already open (native foreground deep link)
     const sub = Linking.addEventListener('url', ({ url }) => handleURL(url));
     return () => sub.remove();
   }, [navigate]);

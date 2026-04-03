@@ -22,19 +22,18 @@ function ServiceEmblem({ service, onOAuthLogin }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
 
-  // Receive the auth result posted back from the OAuth popup.
-  // The popup closes via window.close() so openAuthSessionAsync returns 'dismiss';
-  // the actual result arrives here via postMessage.
+  // Receive the auth result posted by oauth-callback.html.
+  // Format: { auth_result: 'success'|'no_account'|'error', token: '...' }
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'auth_result') return;
+      if (event.origin !== 'https://www.subtrackr.live') return;
+      if (!event.data?.auth_result) return;
       setLoading(false);
-      const { status, token } = event.data;
-      if (status === 'success' && token) {
+      const { auth_result, token } = event.data;
+      if (auth_result === 'success' && token) {
         onOAuthLogin(token);
-      } else if (status === 'no_account') {
+      } else if (auth_result === 'no_account') {
         Alert.alert('No account found', 'No Subtrackr account is linked to this email. Please sign up first.');
       } else {
         Alert.alert('Sign-in failed', 'Could not sign in with Google. Please try again.');

@@ -69,15 +69,15 @@ async def google_login_callback(
 ):
     """Exchange Google code for profile, find user by email, issue JWT."""
     if error or not code:
-        return RedirectResponse(f"{FRONTEND_URL}/?auth_result=error")
+        return RedirectResponse(f"{FRONTEND_URL}?auth_result=error")
     try:
         profile = await fetch_google_login_profile(code)
         user = db.query(User).filter(User.email == profile["email"]).first()
         if not user:
-            return RedirectResponse(f"{FRONTEND_URL}/?auth_result=no_account")
+            return RedirectResponse(f"{FRONTEND_URL}?auth_result=no_account")
         token = create_access_token(data={"sub": user.username})
         return RedirectResponse(
-            f"{FRONTEND_URL}/?auth_result=success&token={urllib.parse.quote(token)}"
+            f"{FRONTEND_URL}?auth_result=success&token={urllib.parse.quote(token)}"
         )
     except Exception:
-        return RedirectResponse(f"{FRONTEND_URL}/?auth_result=error")
+        return RedirectResponse(f"{FRONTEND_URL}?auth_result=error")

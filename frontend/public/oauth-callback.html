@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /></head>
+<body>
+<script>
+  var params = new URLSearchParams(window.location.search);
+  var data = {
+    oauth_connect: params.get('oauth_connect'),
+    auth_result:   params.get('auth_result'),
+    subs:          params.get('subs'),
+    profile:       params.get('profile'),
+    token:         params.get('token'),
+    error:         params.get('error')
+  };
+
+  if (window.opener) {
+    window.opener.postMessage(data, 'https://www.subtrackr.live');
+    window.close();
+  } else {
+    // Fallback: redirect the main window with params intact
+    window.location.href = 'https://www.subtrackr.live/?' + window.location.search.slice(1);
+  }
+</script>
+</body>
+</html>

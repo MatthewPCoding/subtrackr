@@ -67,21 +67,26 @@ function ServiceEmblem({ service, onSelect, loading }) {
 export function EmailConnectStep({ onNext }) {
   const [loadingProvider, setLoadingProvider] = useState(null);
 
-  // Listen for the OAuth result posted from the popup window.
-  // openAuthSessionAsync returns 'dismiss' when the popup closes via window.close(),
-  // so we handle the actual result here instead of through its return value.
+  // Receive the OAuth result posted by oauth-callback.html.
+  // Format: { oauth_connect: 'success'|'error', subs: '...', profile: '...' }
+  // subs and profile are still encoded strings here; parse them before passing on.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const handleMessage = (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type !== 'oauth_connect') return;
+      if (event.origin !== 'https://www.subtrackr.live') return;
+      if (!event.data?.oauth_connect) return;
       setLoadingProvider(null);
-      if (event.data.status !== 'success') {
+      if (event.data.oauth_connect !== 'success') {
         Alert.alert('Connection failed', 'Could not connect your email. Please try again.');
         return;
       }
-      const { subs, profile } = event.data;
-      onNext({ type: 'oauth', provider: 'google', subs, profile });
+      try {
+        const subs    = JSON.parse(decodeURIComponent(event.data.subs    || '[]'));
+        const profile = JSON.parse(decodeURIComponent(event.data.profile || '{}'));
+        onNext({ type: 'oauth', provider: 'google', subs, profile });
+      } catch {
+        Alert.alert('Connection failed', 'Could not read OAuth response. Please try again.');
+      }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);

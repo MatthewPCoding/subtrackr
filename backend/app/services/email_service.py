@@ -279,11 +279,11 @@ def build_success_redirect(profile: dict, subscriptions: list[dict]) -> str:
     """Redirect the OAuth popup back to the frontend with scan results + profile."""
     encoded_subs    = urllib.parse.quote(json.dumps(subscriptions[:20]))
     encoded_profile = urllib.parse.quote(json.dumps(profile))
-    return f"{FRONTEND_URL}/?oauth_connect=success&subs={encoded_subs}&profile={encoded_profile}"
+    return f"{FRONTEND_URL}?oauth_connect=success&subs={encoded_subs}&profile={encoded_profile}"
 
 
 def build_error_redirect() -> str:
-    return f"{FRONTEND_URL}/?oauth_connect=error"
+    return f"{FRONTEND_URL}?oauth_connect=error"
 
 
 # ── Google login (identity only, no Gmail scan) ───────────────────────────────
