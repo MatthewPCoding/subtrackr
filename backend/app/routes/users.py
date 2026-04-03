@@ -1,3 +1,4 @@
+import os
 import urllib.parse
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from fastapi.responses import RedirectResponse
@@ -10,6 +11,8 @@ from app.auth import hash_password, verify_password, create_access_token
 from app.services.email_service import get_google_login_url, fetch_google_login_profile
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:8081")
 
 @router.post("/register", response_model=UserResponse)
 def register(user: UserCreate, db: Session = Depends(get_db)):
@@ -39,10 +42,18 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     return {"access_token": token, "token_type": "bearer"}
 
 
+# ── Email lookup (public) ─────────────────────────────────────────────────────
+
+@router.get("/check-email")
+def check_email(email: str = Query(...), db: Session = Depends(get_db)):
+    """Return whether an account exists for the given email. No auth required."""
+    user = db.query(User).filter(User.email == email).first()
+    if user:
+        return {"exists": True, "username": user.username}
+    return {"exists": False}
+
+
 # ── Google OAuth login ────────────────────────────────────────────────────────
-
-AUTH_ERROR_REDIRECT = "subtrackr://auth-error"
-
 
 @router.get("/connect/google")
 async def google_login_connect():
@@ -58,13 +69,15 @@ async def google_login_callback(
 ):
     """Exchange Google code for profile, find user by email, issue JWT."""
     if error or not code:
-        return RedirectResponse(AUTH_ERROR_REDIRECT)
+        return RedirectResponse(f"{FRONTEND_URL}/?auth_result=error")
     try:
         profile = await fetch_google_login_profile(code)
         user = db.query(User).filter(User.email == profile["email"]).first()
         if not user:
-            return RedirectResponse("subtrackr://auth-error?reason=no_account")
+            return RedirectResponse(f"{FRONTEND_URL}/?auth_result=no_account")
         token = create_access_token(data={"sub": user.username})
-        return RedirectResponse(f"subtrackr://auth-success?token={urllib.parse.quote(token)}")
+        return RedirectResponse(
+            f"{FRONTEND_URL}/?auth_result=success&token={urllib.parse.quote(token)}"
+        )
     except Exception:
-        return RedirectResponse(AUTH_ERROR_REDIRECT)
+        return RedirectResponse(f"{FRONTEND_URL}/?auth_result=error")

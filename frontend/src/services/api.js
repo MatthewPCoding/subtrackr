@@ -99,6 +99,12 @@ export const getEmailLoginURL = async (provider) => {
   return res.data;
 };
 
+// GET /auth/check-email?email=... — { exists: bool, username?: string }
+export const checkEmail = async (email) => {
+  const res = await api.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
+  return res.data;
+};
+
 // ── Email OAuth ───────────────────────────────────────────────────────────────
 
 // Key used to hand off scan results from the deep-link handler (App.js)

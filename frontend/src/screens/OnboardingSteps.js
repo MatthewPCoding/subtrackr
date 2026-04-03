@@ -67,6 +67,26 @@ function ServiceEmblem({ service, onSelect, loading }) {
 export function EmailConnectStep({ onNext }) {
   const [loadingProvider, setLoadingProvider] = useState(null);
 
+  // Listen for the OAuth result posted from the popup window.
+  // openAuthSessionAsync returns 'dismiss' when the popup closes via window.close(),
+  // so we handle the actual result here instead of through its return value.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'oauth_connect') return;
+      setLoadingProvider(null);
+      if (event.data.status !== 'success') {
+        Alert.alert('Connection failed', 'Could not connect your email. Please try again.');
+        return;
+      }
+      const { subs, profile } = event.data;
+      onNext({ type: 'oauth', provider: 'google', subs, profile });
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onNext]);
+
   const handleSelectService = async (serviceId) => {
     if (loadingProvider) return;
     if (COMING_SOON_PROVIDERS.has(serviceId)) {

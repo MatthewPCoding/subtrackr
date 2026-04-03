@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
@@ -21,26 +21,44 @@ function ServiceEmblem({ service, onOAuthLogin }) {
   const [hovered, setHovered] = useState(false);
   const [pressed, setPressed] = useState(false);
 
+  // Receive the auth result posted back from the OAuth popup.
+  // The popup closes via window.close() so openAuthSessionAsync returns 'dismiss';
+  // the actual result arrives here via postMessage.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'auth_result') return;
+      setLoading(false);
+      const { status, token } = event.data;
+      if (status === 'success' && token) {
+        onOAuthLogin(token);
+      } else if (status === 'no_account') {
+        Alert.alert('No account found', 'No Subtrackr account is linked to this email. Please sign up first.');
+      } else {
+        Alert.alert('Sign-in failed', 'Could not sign in with Google. Please try again.');
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [onOAuthLogin]);
+
   const handlePress = async () => {
     if (loading) return;
     setLoading(true);
     try {
       const data = await getEmailLoginURL(service.id);
-      const result = await WebBrowser.openAuthSessionAsync(data.url, 'subtrackr://');
-      if (result.type === 'success') {
-        if (result.url.includes('no_account')) {
-          Alert.alert(
-            'No account found',
-            'No Subtrackr account is linked to this email. Please sign up first.',
-          );
-        } else {
-          const match = result.url.match(/[?&]token=([^&]+)/);
-          if (match) onOAuthLogin(decodeURIComponent(match[1]));
-        }
+      // openAuthSessionAsync returns 'dismiss' when the popup closes via window.close().
+      // The actual result arrives via postMessage (handled above).
+      // If the user manually closes the popup with no result, stop the spinner.
+      const result = await WebBrowser.openAuthSessionAsync(data.url, 'https://www.subtrackr.live');
+      if (result.type === 'dismiss' || result.type === 'cancel') {
+        // Give the postMessage a tick to arrive before stopping the spinner;
+        // if no message comes, this clears the loading state.
+        setTimeout(() => setLoading(false), 300);
       }
     } catch {
       Alert.alert('Error', 'Sign-in failed. Please try again.');
-    } finally {
       setLoading(false);
     }
   };

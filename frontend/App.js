@@ -20,38 +20,54 @@ import { PENDING_EMAIL_RESULTS_KEY, PENDING_OAUTH_DATA_KEY } from './src/service
 let _pendingOAuth = null; // { subs, profile }
 
 if (typeof window !== 'undefined') {
-  const params = new URLSearchParams(window.location.search);
-  const status = params.get('oauth_connect');
+  const params      = new URLSearchParams(window.location.search);
+  const oauthStatus = params.get('oauth_connect'); // registration flow
+  const authStatus  = params.get('auth_result');   // login flow
 
-  if (status) {
-    try {
-      if (status === 'success') {
-        const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
-        const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
-
-        if (window.opener) {
-          // Case 1 — popup: forward to parent and close immediately
+  try {
+    if (oauthStatus) {
+      if (window.opener) {
+        // Registration popup — relay result to parent and close
+        if (oauthStatus === 'success') {
+          const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
+          const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
           window.opener.postMessage(
             { type: 'oauth_connect', status: 'success', subs, profile },
             window.location.origin,
           );
-          window.close();
         } else {
-          // Case 2 — direct landing: stash and clean the URL
-          _pendingOAuth = { subs, profile };
-          window.history.replaceState({}, '', window.location.pathname);
-        }
-      } else if (status === 'error') {
-        if (window.opener) {
           window.opener.postMessage(
             { type: 'oauth_connect', status: 'error' },
             window.location.origin,
           );
-          window.close();
         }
+        window.close();
+      } else if (oauthStatus === 'success') {
+        // Direct landing — stash for handleNavigationReady
+        const subs    = JSON.parse(decodeURIComponent(params.get('subs')    || '[]'));
+        const profile = JSON.parse(decodeURIComponent(params.get('profile') || '{}'));
+        _pendingOAuth = { subs, profile };
+        window.history.replaceState({}, '', window.location.pathname);
       }
-    } catch {}
-  }
+    } else if (authStatus) {
+      if (window.opener) {
+        // Login popup — relay result to parent and close
+        if (authStatus === 'success') {
+          const token = decodeURIComponent(params.get('token') || '');
+          window.opener.postMessage(
+            { type: 'auth_result', status: 'success', token },
+            window.location.origin,
+          );
+        } else {
+          window.opener.postMessage(
+            { type: 'auth_result', status: authStatus }, // 'no_account' | 'error'
+            window.location.origin,
+          );
+        }
+        window.close();
+      }
+    }
+  } catch {}
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
