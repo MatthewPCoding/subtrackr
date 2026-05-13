@@ -60,7 +60,13 @@ export default function App() {
 
         await AsyncStorage.setItem(PENDING_OAUTH_DATA_KEY,    JSON.stringify({ subs, profile }));
         await AsyncStorage.setItem(PENDING_EMAIL_RESULTS_KEY, JSON.stringify(subs));
-        navigate('Register');
+
+        // If the user is already logged in (email scan flow), EmailScanScreen
+        // handles the results via its own postMessage listener — don't redirect.
+        const token = await AsyncStorage.getItem('token');
+        if (!token) {
+          navigate('Register');
+        }
       } catch {}
     };
 
@@ -87,7 +93,11 @@ export default function App() {
         if (typeof window !== 'undefined') {
           window.history.replaceState({}, '', window.location.pathname);
         }
-        navigate('Register');
+
+        const token = await AsyncStorage.getItem('token');
+        if (!token) {
+          navigate('Register');
+        }
       } catch {}
     };
 

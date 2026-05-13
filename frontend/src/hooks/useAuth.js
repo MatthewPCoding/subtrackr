@@ -17,7 +17,10 @@ export const AuthProvider = ({ children }) => {
     load();
   }, []);
 
-  const signIn = (newToken) => setToken(newToken);
+  const signIn = async (newToken) => {
+    await AsyncStorage.setItem('token', newToken);
+    setToken(newToken);
+  };
 
   const signOut = async () => {
     await logout();

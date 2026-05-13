@@ -58,6 +58,25 @@ export default function EmailScanScreen({ navigation, route }) {
     checkStatus();
   }, []);
 
+  // Receive email scan results posted by oauth-callback.html after Gmail/Outlook OAuth.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event) => {
+      if (event.origin !== 'https://www.subtrackr.live') return;
+      if (event.data?.oauth_connect !== 'success') return;
+      try {
+        const subs = JSON.parse(decodeURIComponent(event.data.subs || '[]'));
+        setResults(subs);
+        setSelected(new Set(subs.map((_, i) => i)));
+        setPhase(subs.length > 0 ? 'results' : 'idle');
+      } catch {
+        setPhase('idle');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
   // Animate progress bar while awaiting OAuth result
   useEffect(() => {
     if (phase === 'awaiting') {
@@ -97,20 +116,14 @@ export default function EmailScanScreen({ navigation, route }) {
         return;
       }
 
-      // Open in-app browser; it closes automatically when the server redirects
-      // to subtrackr:// and returns the full URL here.
+      // Open in-app browser. oauth-callback.html will post the results via
+      // postMessage (handled by the listener above) and then close the popup.
       setPhase('awaiting');
-      const result = await WebBrowser.openAuthSessionAsync(data.url, 'subtrackr://');
+      await WebBrowser.openAuthSessionAsync(data.url, 'https://www.subtrackr.live/oauth-callback.html');
 
-      if (result.type === 'success') {
-        const match = result.url.match(/[?&]subs=([^&]+)/);
-        const subs = match ? JSON.parse(decodeURIComponent(match[1])) : [];
-        setResults(subs);
-        setSelected(new Set(subs.map((_, i) => i)));
-        setPhase(subs.length > 0 ? 'results' : 'idle');
-      } else {
-        setPhase('idle'); // user cancelled
-      }
+      // If the postMessage listener already updated the phase, leave it.
+      // If the popup was closed with no result (user cancelled), reset to idle.
+      setPhase(p => p === 'awaiting' ? 'idle' : p);
     } catch {
       setError('Could not load the OAuth URL. Please try again.');
       setPhase('idle');
