@@ -15,9 +15,8 @@ A mobile app for tracking, analyzing, and optimizing your recurring subscription
 | Email scanning | Google OAuth 2.0 + Gmail API, Microsoft OAuth 2.0 + Microsoft Graph API |
 | Auth | JWT (python-jose), bcrypt |
 | Background jobs | APScheduler |
-| Backend hosting | AWS Elastic Beanstalk |
-| Frontend hosting | AWS S3 + CloudFront |
-| Database hosting | AWS RDS (PostgreSQL) |
+| Backend hosting | Render |
+| Frontend hosting | Vercel |
 
 ---
 
@@ -49,8 +48,8 @@ subtrackr/
 │   │   ├── auth.py           # JWT + password hashing
 │   │   └── main.py           # App entry point
 │   ├── alembic/              # Database migrations
-│   ├── .ebextensions/        # Elastic Beanstalk config
-│   ├── Procfile              # EB process definition
+│   ├── Procfile              # Render process definition
+│   ├── runtime.txt           # Python version for Render
 │   ├── requirements.txt
 │   └── .env.example
 └── frontend/                 # Expo React Native app
@@ -60,7 +59,7 @@ subtrackr/
     │   ├── hooks/
     │   ├── services/         # API client (api.js)
     │   └── theme.js
-    ├── deploy.sh             # S3 + CloudFront deploy script
+    ├── vercel.json           # Vercel deploy config
     └── App.js
 ```
 
@@ -112,139 +111,68 @@ npx expo run:ios     # or run:android
 
 ---
 
-## Deploying to AWS
+## Deploying
 
-### 1. RDS PostgreSQL
+### Backend — Render
 
-1. Open the [RDS console](https://console.aws.amazon.com/rds/) → **Create database**
-2. Engine: **PostgreSQL 15+**
-3. Template: **Free tier** (dev) or **Production**
-4. DB instance identifier: `subtrackr-db`
-5. Master username / password: choose and save these
-6. Under **Connectivity** → set VPC, enable **Public access** if EB needs to reach it, or keep private and place both in the same VPC
-7. Create database, then note the **Endpoint** (e.g. `subtrackr-db.xxxx.us-east-1.rds.amazonaws.com`)
+1. Go to [render.com](https://render.com) → **New** → **Web Service**
+2. Connect your GitHub repo and select the `backend/` directory (or set the root directory to `backend`)
+3. Runtime: **Python 3**
+4. Build command: `pip install -r requirements.txt`
+5. Start command: automatically picked up from `Procfile`
 
-Connection string format:
-```
-postgresql://username:password@subtrackr-db.xxxx.us-east-1.rds.amazonaws.com:5432/subtrackr
-```
+#### Environment variables
 
-After the instance is available, connect and create the database:
-```bash
-psql -h <rds-endpoint> -U <username> -c "CREATE DATABASE subtrackr;"
-alembic upgrade head   # run from backend/ with DATABASE_URL set to the RDS URL
-```
-
----
-
-### 2. Backend — Elastic Beanstalk
-
-#### Prerequisites
-```bash
-pip install awsebcli
-eb --version
-```
-
-#### Initial setup
-```bash
-cd backend
-
-# Initialize EB application (choose Python 3.11, us-east-1 or your region)
-eb init subtrackr-backend --platform python-3.11 --region us-east-1
-
-# Create environment
-eb create subtrackr-prod
-```
-
-#### Set environment variables in EB console
-
-Go to your EB environment → **Configuration** → **Software** → **Environment properties** and add:
+Set these in your Render service's **Environment** tab:
 
 | Key | Value |
 |-----|-------|
-| `DATABASE_URL` | `postgresql://user:pass@rds-endpoint:5432/subtrackr` |
+| `DATABASE_URL` | Render PostgreSQL internal URL (or external URL) |
 | `SECRET_KEY` | your random secret |
 | `ALGORITHM` | `HS256` |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` |
 | `ANTHROPIC_API_KEY` | `sk-ant-...` |
 | `GOOGLE_CLIENT_ID` | from Google Cloud Console |
 | `GOOGLE_CLIENT_SECRET` | from Google Cloud Console |
-| `GOOGLE_REDIRECT_URI` | `https://your-env.elasticbeanstalk.com/email/callback/google` |
-| `GOOGLE_LOGIN_REDIRECT_URI` | `https://your-env.elasticbeanstalk.com/auth/callback/google` |
+| `GOOGLE_REDIRECT_URI` | `https://your-service.onrender.com/email/callback/google` |
+| `GOOGLE_LOGIN_REDIRECT_URI` | `https://your-service.onrender.com/auth/callback/google` |
 | `MICROSOFT_CLIENT_ID` | from Azure portal |
 | `MICROSOFT_CLIENT_SECRET` | from Azure portal |
-| `MICROSOFT_REDIRECT_URI` | `https://your-env.elasticbeanstalk.com/email/callback/microsoft` |
-| `ALLOWED_ORIGINS` | `https://your-cloudfront-id.cloudfront.net` |
-| `FRONTEND_URL` | `https://your-cloudfront-id.cloudfront.net` |
+| `MICROSOFT_REDIRECT_URI` | `https://your-service.onrender.com/email/callback/microsoft` |
+| `ALLOWED_ORIGINS` | `https://your-project.vercel.app` |
+| `FRONTEND_URL` | `https://your-project.vercel.app` |
 
-#### Deploy
+#### Database
+
+Use Render's managed **PostgreSQL** service (New → PostgreSQL) and copy the internal database URL into `DATABASE_URL`. After the instance is ready, run migrations:
+
 ```bash
-cd backend
-eb deploy
+# with DATABASE_URL set to the Render connection string
+alembic upgrade head
 ```
-
-Note your EB URL (e.g. `https://subtrackr-prod.us-east-1.elasticbeanstalk.com`).
-
-#### Update Google Cloud Console redirect URIs
-
-Add your production URIs alongside the existing localhost ones:
-- `https://your-env.elasticbeanstalk.com/email/callback/google`
-- `https://your-env.elasticbeanstalk.com/auth/callback/google`
 
 ---
 
-### 3. Frontend — S3 + CloudFront
+### Frontend — Vercel
 
-#### Create S3 bucket
-
-1. Go to [S3 console](https://s3.console.aws.amazon.com/) → **Create bucket**
-2. Name: `subtrackr-web` (must be globally unique)
-3. Uncheck **Block all public access**
-4. Enable **Static website hosting** → index document: `index.html`, error document: `index.html`
-5. Add bucket policy:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": "*",
-    "Action": "s3:GetObject",
-    "Resource": "arn:aws:s3:::subtrackr-web/*"
-  }]
-}
-```
-
-#### Create CloudFront distribution
-
-1. Go to [CloudFront console](https://console.aws.amazon.com/cloudfront/) → **Create distribution**
-2. Origin domain: select your S3 bucket's website endpoint
-3. Default root object: `index.html`
-4. Under **Error pages**: add a custom error response — HTTP 403/404 → `/index.html`, HTTP 200
-5. Create distribution, note the **Distribution domain name** (e.g. `xyz.cloudfront.net`)
+1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import your repo
+2. Set the **Root Directory** to `frontend`
+3. Vercel will use `vercel.json` for build settings automatically
 
 #### Update API base URL
 
-In `frontend/src/services/api.js`, change:
+In `frontend/src/services/api.js`, set:
 ```js
-const BASE_URL = 'https://your-env.elasticbeanstalk.com';
+const BASE_URL = 'https://your-service.onrender.com';
 ```
 
-#### Build and deploy
-
-```bash
-cd frontend
-
-# First-time or after BASE_URL change:
-S3_BUCKET=subtrackr-web CF_DIST_ID=EXXXXXXXXXX ./deploy.sh
-```
-
-The script builds the Expo web export, syncs to S3 with correct cache headers, and invalidates CloudFront.
+Then push — Vercel redeploys on every commit to `main`.
 
 ---
 
 ## Environment Variables
 
-### Backend (`backend/.env` / EB environment properties)
+### Backend (`backend/.env` / Render environment)
 
 See `backend/.env.example` for the full list with descriptions.
 
@@ -252,15 +180,15 @@ Key production values to update from their local defaults:
 
 | Variable | Local | Production |
 |----------|-------|------------|
-| `DATABASE_URL` | `postgresql://...@localhost/subtrackr` | RDS endpoint URL |
-| `GOOGLE_REDIRECT_URI` | `http://localhost:8000/...` | `https://your-eb.elasticbeanstalk.com/...` |
-| `GOOGLE_LOGIN_REDIRECT_URI` | `http://localhost:8000/...` | `https://your-eb.elasticbeanstalk.com/...` |
-| `ALLOWED_ORIGINS` | _(empty)_ | `https://your-cloudfront.net` |
-| `FRONTEND_URL` | `http://localhost:8081` | `https://your-cloudfront.net` |
+| `DATABASE_URL` | `postgresql://...@localhost/subtrackr` | Render PostgreSQL URL |
+| `GOOGLE_REDIRECT_URI` | `http://localhost:8000/...` | `https://your-service.onrender.com/...` |
+| `GOOGLE_LOGIN_REDIRECT_URI` | `http://localhost:8000/...` | `https://your-service.onrender.com/...` |
+| `ALLOWED_ORIGINS` | _(empty)_ | `https://your-project.vercel.app` |
+| `FRONTEND_URL` | `http://localhost:8081` | `https://your-project.vercel.app` |
 
 ### Frontend
 
-No `.env` file. Update `BASE_URL` in `src/services/api.js` before building for production.
+No `.env` file. Update `BASE_URL` in `src/services/api.js` before deploying.
 
 ---
 
@@ -271,8 +199,8 @@ No `.env` file. Update `BASE_URL` in `src/services/api.js` before building for p
 3. Add all authorized redirect URIs (local + production):
    - `http://localhost:8000/email/callback/google`
    - `http://localhost:8000/auth/callback/google`
-   - `https://your-env.elasticbeanstalk.com/email/callback/google`
-   - `https://your-env.elasticbeanstalk.com/auth/callback/google`
+   - `https://your-service.onrender.com/email/callback/google`
+   - `https://your-service.onrender.com/auth/callback/google`
 4. Go to **OAuth consent screen** → add test users while in Testing mode
 5. Enable the **Gmail API** in [APIs & Services → Library](https://console.cloud.google.com/apis/library)
 
