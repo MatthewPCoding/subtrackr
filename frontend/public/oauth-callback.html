@@ -14,7 +14,7 @@
   };
 
   if (window.opener) {
-    window.opener.postMessage(data, 'https://www.subtrackr.live');
+    window.opener.postMessage(data, '*');
     window.close();
   } else {
     // Fallback: redirect the main window with params intact
