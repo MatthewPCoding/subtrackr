@@ -52,9 +52,23 @@ function ServiceEmblem({ service, onOAuthLogin }) {
       // The actual result arrives via postMessage (handled above).
       // If the user manually closes the popup with no result, stop the spinner.
       const result = await WebBrowser.openAuthSessionAsync(data.url, 'https://www.subtrackr.live');
-      if (result.type === 'dismiss' || result.type === 'cancel') {
-        // Give the postMessage a tick to arrive before stopping the spinner;
-        // if no message comes, this clears the loading state.
+      if (result.type === 'success') {
+        // openAuthSessionAsync captured the URL before oauth-callback.html could
+        // postMessage — parse auth params directly from the captured URL.
+        const params = new URLSearchParams((result.url.split('?')[1]) || '');
+        const authResult = params.get('auth_result');
+        const token = params.get('token');
+        if (authResult === 'success' && token) {
+          onOAuthLogin(token);
+        } else if (authResult === 'no_account') {
+          Alert.alert('No account found', 'No Subtrackr account is linked to this email. Please sign up first.');
+        } else {
+          Alert.alert('Sign-in failed', 'Could not sign in with Google. Please try again.');
+        }
+        setLoading(false);
+      } else if (result.type === 'dismiss' || result.type === 'cancel') {
+        // Popup was closed (either by window.close() in oauth-callback.html or
+        // by the user). Give the postMessage 300ms to arrive before clearing.
         setTimeout(() => setLoading(false), 300);
       }
     } catch {

@@ -116,14 +116,32 @@ export default function EmailScanScreen({ navigation, route }) {
         return;
       }
 
-      // Open in-app browser. oauth-callback.html will post the results via
-      // postMessage (handled by the listener above) and then close the popup.
+      // Open in-app browser. Two possible outcomes:
+      // 1. openAuthSessionAsync captures the URL before oauth-callback.html runs
+      //    its script → type:'success', parse subs from result.url directly.
+      // 2. oauth-callback.html posts via postMessage and closes the popup first
+      //    → type:'dismiss', postMessage listener above already set the results.
       setPhase('awaiting');
-      await WebBrowser.openAuthSessionAsync(data.url, 'https://www.subtrackr.live/oauth-callback.html');
+      const result = await WebBrowser.openAuthSessionAsync(data.url, 'https://www.subtrackr.live/oauth-callback.html');
 
-      // If the postMessage listener already updated the phase, leave it.
-      // If the popup was closed with no result (user cancelled), reset to idle.
-      setPhase(p => p === 'awaiting' ? 'idle' : p);
+      if (result.type === 'success') {
+        const params = new URLSearchParams((result.url.split('?')[1]) || '');
+        if (params.get('oauth_connect') === 'success') {
+          try {
+            const subs = JSON.parse(decodeURIComponent(params.get('subs') || '[]'));
+            setResults(subs);
+            setSelected(new Set(subs.map((_, i) => i)));
+            setPhase(subs.length > 0 ? 'results' : 'idle');
+          } catch {
+            setPhase('idle');
+          }
+        } else {
+          setPhase('idle');
+        }
+      } else {
+        // dismiss/cancel: postMessage listener already handled it, or user cancelled.
+        setPhase(p => p === 'awaiting' ? 'idle' : p);
+      }
     } catch {
       setError('Could not load the OAuth URL. Please try again.');
       setPhase('idle');
