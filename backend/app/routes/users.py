@@ -68,16 +68,21 @@ async def google_login_callback(
     db:    Session = Depends(get_db),
 ):
     """Exchange Google code for profile, find user by email, issue JWT."""
+    def redirect(url: str) -> RedirectResponse:
+        r = RedirectResponse(url)
+        r.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        return r
+
     if error or not code:
-        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback.html?auth_result=error")
+        return redirect(f"{FRONTEND_URL}/oauth-callback.html?auth_result=error")
     try:
         profile = await fetch_google_login_profile(code)
         user = db.query(User).filter(User.email == profile["email"]).first()
         if not user:
-            return RedirectResponse(f"{FRONTEND_URL}/oauth-callback.html?auth_result=no_account")
+            return redirect(f"{FRONTEND_URL}/oauth-callback.html?auth_result=no_account")
         token = create_access_token(data={"sub": user.username})
-        return RedirectResponse(
+        return redirect(
             f"{FRONTEND_URL}/oauth-callback.html?auth_result=success&token={urllib.parse.quote(token)}"
         )
     except Exception:
-        return RedirectResponse(f"{FRONTEND_URL}/oauth-callback.html?auth_result=error")
+        return redirect(f"{FRONTEND_URL}/oauth-callback.html?auth_result=error")

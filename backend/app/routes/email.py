@@ -63,6 +63,12 @@ async def connect_other(provider: str):
 
 # ── Public: OAuth callbacks ───────────────────────────────────────────────────
 
+def _coop_redirect(url: str) -> RedirectResponse:
+    r = RedirectResponse(url)
+    r.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+    return r
+
+
 @router.get("/callback/google")
 async def callback_google(
     code:  str = Query(None),
@@ -71,16 +77,16 @@ async def callback_google(
     logger.info("Google OAuth callback received — code=%s error=%s", bool(code), error)
     if error or not code:
         logger.warning("Google OAuth callback missing code or has error: %s", error)
-        return RedirectResponse(build_error_redirect())
+        return _coop_redirect(build_error_redirect())
     try:
         profile, subs = await fetch_gmail_subscriptions(code)
         logger.info("Google OAuth success — email=%s subs_found=%d", profile.get("email"), len(subs))
         redirect_url = build_success_redirect(profile, subs)
         logger.info("Redirecting to: %s", redirect_url[:120])
-        return RedirectResponse(redirect_url)
+        return _coop_redirect(redirect_url)
     except Exception as exc:
         logger.exception("Google OAuth callback failed: %s", exc)
-        return RedirectResponse(build_error_redirect())
+        return _coop_redirect(build_error_redirect())
 
 
 @router.get("/callback/microsoft")
@@ -91,16 +97,16 @@ async def callback_microsoft(
     logger.info("Microsoft OAuth callback received — code=%s error=%s", bool(code), error)
     if error or not code:
         logger.warning("Microsoft OAuth callback missing code or has error: %s", error)
-        return RedirectResponse(build_error_redirect())
+        return _coop_redirect(build_error_redirect())
     try:
         profile, subs = await fetch_outlook_subscriptions(code)
         logger.info("Microsoft OAuth success — email=%s subs_found=%d", profile.get("email"), len(subs))
         redirect_url = build_success_redirect(profile, subs)
         logger.info("Redirecting to: %s", redirect_url[:120])
-        return RedirectResponse(redirect_url)
+        return _coop_redirect(redirect_url)
     except Exception as exc:
         logger.exception("Microsoft OAuth callback failed: %s", exc)
-        return RedirectResponse(build_error_redirect())
+        return _coop_redirect(build_error_redirect())
 
 
 # ── Auth-required ─────────────────────────────────────────────────────────────
